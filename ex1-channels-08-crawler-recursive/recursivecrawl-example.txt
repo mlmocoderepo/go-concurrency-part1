@@ -1,0 +1,99 @@
+package main
+
+import (
+	"fmt"
+	"net/http"
+	"time"
+
+	"golang.org/x/net/html"
+)
+
+// fetched is used to check whether the status of the url 'key' has a bool value 'true'
+var fetched map[string]bool
+
+func main() {
+	// instantiate variable fetch as an empty map[string]bool
+	// set the time since the function is called
+	fetched = make(map[string]bool)
+	now := time.Now()
+
+	// crawl through the url entered at the depth of 2
+	// display the time taken to crawl through the url
+	CrawlURL("http://andcloud.io", 2)
+	fmt.Println("Time taken to crawl: ", time.Since(now))
+}
+
+// CrawlURL is used to RECURSIVELY crawl through the url / page passed to it
+// The maximum level to crawl is dependent on the depth parameter
+func CrawlURL(url string, depth int) {
+
+	// 1. this ends the recursive process when the depth of recursion reaches less than zero
+	if depth < 0 {
+		return
+	}
+
+	// 2. sends the url to be crawled via a) findLinks(string)([]string, error) -> visit([]string, node *html.Node)([]string)
+	urls, err := findLinks(url)
+	if err != nil {
+		return
+	}
+
+	// 3. prints the url found and set the fetched[url]'s value to true
+	fmt.Printf("Found %s\n", url)
+	fetched[url] = true
+
+	// 4. recursively checks if the urls returned is listed,
+	// where the value == true; otherwise iterate through the url at a depth of -1
+	for _, u := range urls {
+		if !fetched[u] {
+			CrawlURL(u, depth-1)
+		}
+	}
+
+	return
+}
+
+// findlinks() gets the url, checks the status code before parsing the response's body
+// it then paases the parsed data to the function visit() to iterate through the html node elements
+func findLinks(url string) ([]string, error) {
+
+	response, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+
+	if response.StatusCode != http.StatusOK {
+		response.Body.Close()
+		return nil, fmt.Errorf("Status getting %s: %s", url, response.Status)
+	}
+
+	doc, err := html.Parse(response.Body)
+	response.Body.Close()
+
+	if err != nil {
+		return nil, fmt.Errorf("Status parsing %s: %s", url, err)
+	}
+
+	return visit(nil, doc), nil
+}
+
+// visit() iterates through the parsed data it receives via checking the node.Type is and html.Elementnode
+// with 'a' nodes' as data and loops thorugh the attributes to seive out the href attribute
+// and appends the href's value to the the links parameter
+// Then, it checks if the the node has siblings before recursively obtaining additional href values from the node's sibiling()
+func visit(links []string, node *html.Node) []string {
+
+	if node.Type == html.ElementNode && node.Data == "a" {
+		for _, a := range node.Attr {
+			if a.Key == "href" {
+				links = append(links, a.Val)
+			}
+		}
+	}
+
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		links = visit(links, child)
+	}
+
+	return links
+}
